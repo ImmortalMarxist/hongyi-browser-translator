@@ -30,7 +30,9 @@
   let panelRestoreState = null;
   let panelSourceEditTimer = null;
   const panelRetryTokens = new Map();
-  let panelProviderChangeRevision = 0;
+  const panelProviderChangeRevisions = new Map();
+  let panelDeepSeekStatusPending = false;
+  let panelDeepSeekStatusPromise = null;
 
   const host = document.createElement("div");
   host.id = HOST_ID;
@@ -933,26 +935,41 @@ async function translateInPanel(text, anchorRect, keepCurrentPosition = false) {
       const settings = await chrome.storage.local.get(["targetLanguage"]);
       panelLanguage.value = settings.targetLanguage || panelLanguage.value || "zh-CN";
 
+      let deepseekStatusPromise = null;
       if (panelProviderDeepSeek.checked && !deepseekApiConfigured) {
-        const apiStatus = await sendMessage({ type: "GET_DEEPSEEK_STATUS" });
-        if (
-          serial !== requestSerial
-          || panelSource.value.trim() !== text
-        ) return;
-        deepseekApiConfigured = Boolean(apiStatus?.ok && apiStatus.configured);
-        if (!deepseekApiConfigured) {
-          panelProviderDeepSeek.checked = false;
-          panelProviderOrder = panelProviderOrder.filter((provider) => provider !== "deepseek");
-          showPanelNotice("DeepSeek API Key 不可用，DeepSeek 已取消勾选。");
-        }
+        // Mark DeepSeek as pending before collecting providers so its card appears
+        // immediately instead of showing a checked box with no corresponding card.
+        deepseekStatusPromise = ensurePanelDeepSeekStatus();
       }
 
-      // The visible panel controls are authoritative while translating. Re-applying
-      // a stored list here can restore the stale state from the preceding uncheck.
-      const providers = getPanelSelectedProviders();
+      let providers = getPanelSelectedProviders();
       const targetSnapshot = panelLanguage.value;
       let resolvedTargetLanguage = targetSnapshot;
       renderPanelLoading(providers);
+
+      if (deepseekStatusPromise) {
+        const configured = await deepseekStatusPromise;
+        if (
+          serial !== requestSerial
+          || panelSource.value.trim() !== text
+          || panelLanguage.value !== targetSnapshot
+        ) return;
+
+        if (!configured && panelProviderDeepSeek.checked) {
+          panelProviderDeepSeek.checked = false;
+          panelProviderOrder = panelProviderOrder.filter((provider) => provider !== "deepseek");
+          if (!panelProviderGoogle.checked && !panelProviderDeepL.checked) panelProviderGoogle.checked = true;
+          providers = getPanelSelectedProviders();
+          renderPanelLoading(providers);
+          await chrome.storage.local.set({ translationProviders: providers });
+          showPanelNotice("DeepSeek API Key \u4e0d\u53ef\u7528\uff0cDeepSeek \u5df2\u53d6\u6d88\u52fe\u9009\u3002\u8bf7\u5148\u5728\u83dc\u5355\u680f\u7a97\u53e3\u4e2d\u586b\u5199\u5e76\u4fdd\u5b58 API Key\u3002");
+        } else {
+          // The user may have changed another provider while the shared status
+          // request was pending. Re-read the current controls and click order.
+          providers = getPanelSelectedProviders();
+          renderPanelLoading(providers);
+        }
+      }
 
       const tasks = providers.map(async (provider) => {
         let record;
@@ -1150,59 +1167,112 @@ async function translateInPanel(text, anchorRect, keepCurrentPosition = false) {
     panelVerticalMax.setAttribute("aria-label", panelVerticalMax.title);
   }
 
+  function bumpPanelProviderChangeRevision(provider) {
+    const revision = (panelProviderChangeRevisions.get(provider) || 0) + 1;
+    panelProviderChangeRevisions.set(provider, revision);
+    return revision;
+  }
+
+  function isPanelProviderChangeCurrent(provider, revision) {
+    return panelProviderChangeRevisions.get(provider) === revision;
+  }
+
+  function hasAnotherCheckedPanelProvider(provider) {
+    return (
+      (provider !== "google" && panelProviderGoogle.checked)
+      || (provider !== "deepseek" && panelProviderDeepSeek.checked)
+      || (provider !== "deepl" && panelProviderDeepL.checked)
+    );
+  }
+
+  function ensurePanelDeepSeekStatus() {
+    if (deepseekApiConfigured) return Promise.resolve(true);
+    if (panelDeepSeekStatusPromise) return panelDeepSeekStatusPromise;
+
+    panelDeepSeekStatusPending = true;
+    const statusPromise = sendMessage({ type: "GET_DEEPSEEK_STATUS" })
+      .then((status) => Boolean(status?.ok && status.configured))
+      .catch(() => false)
+      .then((configured) => {
+        // A storage event may have supplied a newer status while this request was
+        // in flight. Only the currently registered promise may overwrite it.
+        if (panelDeepSeekStatusPromise !== statusPromise) return deepseekApiConfigured;
+        deepseekApiConfigured = configured;
+        return configured;
+      })
+      .finally(() => {
+        if (panelDeepSeekStatusPromise === statusPromise) {
+          panelDeepSeekStatusPending = false;
+          panelDeepSeekStatusPromise = null;
+        }
+      });
+
+    panelDeepSeekStatusPromise = statusPromise;
+    return statusPromise;
+  }
+
+  function upsertPanelProviderLoading(provider) {
+    const loadingRecord = {
+      provider,
+      label: getProviderLabel(provider),
+      loading: true
+    };
+    translatedResults = translatedResults.some((record) => record.provider === provider)
+      ? translatedResults.map((record) => record.provider === provider ? loadingRecord : record)
+      : [...translatedResults, loadingRecord];
+    renderPanelResults(translatedResults);
+  }
+
   async function handlePanelProviderChange(event) {
     const provider = event.target?.value;
     if (!VALID_TRANSLATION_PROVIDERS.includes(provider)) return;
 
-    const changeRevision = ++panelProviderChangeRevision;
     const checked = Boolean(event.target.checked);
+    if (!checked && !hasAnotherCheckedPanelProvider(provider)) {
+      event.target.checked = true;
+      showPanelNotice("\u81f3\u5c11\u9700\u8981\u4fdd\u7559\u4e00\u4e2a\u7ffb\u8bd1\u6765\u6e90\u3002");
+      return;
+    }
 
-    if (event.target === panelProviderDeepSeek && checked) {
-      try {
-        const status = await sendMessage({ type: "GET_DEEPSEEK_STATUS" });
-        if (
-          changeRevision !== panelProviderChangeRevision
-          || event.target.checked !== checked
-        ) return;
-        deepseekApiConfigured = Boolean(status?.ok && status.configured);
-      } catch {
-        if (
-          changeRevision !== panelProviderChangeRevision
-          || event.target.checked !== checked
-        ) return;
-        deepseekApiConfigured = false;
-      }
+    const changeRevision = bumpPanelProviderChangeRevision(provider);
+    panelProviderOrder = panelProviderOrder.filter((item) => item !== provider);
+    if (checked) panelProviderOrder.push(provider);
 
-      if (!deepseekApiConfigured) {
+    if (provider === "deepseek" && checked) {
+      const statusPromise = ensurePanelDeepSeekStatus();
+      upsertPanelProviderLoading("deepseek");
+      showPanelNotice("\u6b63\u5728\u68c0\u67e5 DeepSeek API Key\u2026");
+
+      const configured = await statusPromise;
+      if (
+        !isPanelProviderChangeCurrent(provider, changeRevision)
+        || !panelProviderDeepSeek.checked
+      ) return;
+
+      if (!configured) {
         panelProviderDeepSeek.checked = false;
         panelProviderOrder = panelProviderOrder.filter((item) => item !== "deepseek");
+        translatedResults = translatedResults.filter((record) => record.provider !== "deepseek");
         if (!panelProviderGoogle.checked && !panelProviderDeepL.checked) panelProviderGoogle.checked = true;
-        await chrome.storage.local.set({ translationProviders: getPanelSelectedProviders() });
+        const fallbackProviders = getPanelSelectedProviders();
+        await chrome.storage.local.set({ translationProviders: fallbackProviders });
+        if (!isPanelProviderChangeCurrent(provider, changeRevision)) return;
         renderPanelResults(translatedResults);
-        showPanelNotice("请点击 Edge 菜单栏上的“宏”图标，在 DeepSeek API 设置中填写并保存 API Key；未填写时 DeepSeek 勾选不会生效。");
+        showPanelNotice("\u8bf7\u70b9\u51fb Edge \u83dc\u5355\u680f\u4e0a\u7684\u201c\u5b8f\u201d\u56fe\u6807\uff0c\u5728 DeepSeek API \u8bbe\u7f6e\u4e2d\u586b\u5199\u5e76\u4fdd\u5b58 API Key\uff1b\u672a\u586b\u5199\u65f6 DeepSeek \u52fe\u9009\u4e0d\u4f1a\u751f\u6548\u3002");
+        if (panelSource.value.trim()) {
+          void translateInPanel(panelSource.value.trim(), selectionAnchorRect, true);
+        }
         return;
       }
     }
 
-    if (changeRevision !== panelProviderChangeRevision) return;
+    if (!isPanelProviderChangeCurrent(provider, changeRevision)) return;
 
-    const previousOrder = panelProviderOrder.slice();
-    panelProviderOrder = panelProviderOrder.filter((item) => item !== provider);
-    if (checked) panelProviderOrder.push(provider);
-
-    let providers = getPanelSelectedProviders();
-    if (!providers.length) {
-      event.target.checked = true;
-      panelProviderOrder = previousOrder.length ? previousOrder : [provider];
-      providers = getPanelSelectedProviders();
-      showPanelNotice("至少需要保留一个翻译来源。");
-      return;
-    }
-
+    const providers = getPanelSelectedProviders();
     requestSerial += 1;
     renderPanelResults(translatedResults);
     await chrome.storage.local.set({ translationProviders: providers });
-    if (changeRevision !== panelProviderChangeRevision) return;
+    if (!isPanelProviderChangeCurrent(provider, changeRevision)) return;
 
     clearPanelNotice();
     if (panelSource.value.trim()) {
@@ -1223,7 +1293,9 @@ async function translateInPanel(text, anchorRect, keepCurrentPosition = false) {
 
   function isPanelProviderSelected(provider) {
     if (provider === "google") return panelProviderGoogle.checked;
-    if (provider === "deepseek") return panelProviderDeepSeek.checked && deepseekApiConfigured;
+    if (provider === "deepseek") {
+      return panelProviderDeepSeek.checked && (deepseekApiConfigured || panelDeepSeekStatusPending);
+    }
     if (provider === "deepl") return panelProviderDeepL.checked;
     return false;
   }
@@ -1484,6 +1556,8 @@ async function translateInPanel(text, anchorRect, keepCurrentPosition = false) {
 
     if (changes.deepseekApiConfigured) {
       deepseekApiConfigured = Boolean(changes.deepseekApiConfigured.newValue);
+      panelDeepSeekStatusPending = false;
+      panelDeepSeekStatusPromise = null;
       if (!deepseekApiConfigured && panelProviderDeepSeek.checked) {
         panelProviderDeepSeek.checked = false;
         panelProviderOrder = panelProviderOrder.filter((provider) => provider !== "deepseek");

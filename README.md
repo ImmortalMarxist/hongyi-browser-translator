@@ -1,4 +1,4 @@
-﻿# 第一次使用：把扩展导入 Edge 或其他浏览器
+﻿# 第一次使用：把扩展导入 Edge 浏览器
 
 如果你第一次拿到“宏译”的 ZIP 压缩包，请按照下面的步骤安装。**ZIP 文件不能直接加载到 Edge，必须先解压。**
 
@@ -309,7 +309,7 @@ G:\chatGPT_codex\Codex\edge-google-selection-translator
 
 <!-- ENGLISH TRANSLATION -->
 
-# First Use: Import the Extension into Microsoft Edge or another
+# First Use: Import the Extension into Microsoft Edge
 
 If this is your first time receiving the Hongyi ZIP archive, follow the steps below to install it. **A ZIP file cannot be loaded directly into Edge and must be extracted first.**
 
