@@ -309,7 +309,7 @@ G:\chatGPT_codex\Codex\edge-google-selection-translator
 
 <!-- ENGLISH TRANSLATION -->
 
-# First Use: Import the Extension into Microsoft Edge
+# First Use: Import the Extension into Microsoft Edge or another
 
 If this is your first time receiving the Hongyi ZIP archive, follow the steps below to install it. **A ZIP file cannot be loaded directly into Edge and must be extracted first.**
 
