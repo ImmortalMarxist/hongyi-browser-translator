@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>宏译</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <div class="brand-mark" aria-hidden="true">译</div>
+      <div class="header-copy">
+        <h1>宏译</h1>
+        <p>可同时使用谷歌翻译、DeepSeek 和 DeepL</p>
+      </div>
+      <div class="window-actions">
+        <button id="always-on-top-button" class="window-control-button window-pin-button" type="button" title="&#x624b;&#x52a8;&#x7f6e;&#x9876;" aria-label="&#x624b;&#x52a8;&#x7f6e;&#x9876;" aria-pressed="false">
+          <svg class="pin-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M8.5 3.5h7l-1.2 4.2 3.7 4.1H6l3.7-4.1L8.5 3.5Z"></path>
+            <path d="M12 11.8V21"></path>
+          </svg>
+        </button>
+        <button id="vertical-max-button" class="window-control-button window-height-button" type="button" title="纵向最大化" aria-label="纵向最大化" aria-pressed="false">↕</button>
+        <button id="extension-power-button" class="window-control-button window-power-button" type="button" title="&#x5173;&#x95ed;&#x63d2;&#x4ef6;" aria-label="&#x5173;&#x95ed;&#x63d2;&#x4ef6;" aria-pressed="true">
+          <svg class="power-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 2.8v8.4"></path>
+            <path d="M6.2 5.8a8 8 0 1 0 11.6 0"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="source-heading">
+        <label class="section-label" for="source-text">原文</label>
+        <span id="source-text-count" class="source-count" aria-label="原文统计">0</span>
+      </div>
+      <textarea
+        id="source-text"
+        maxlength="50000"
+        placeholder="在网页中选中文字，或在这里输入…"
+        spellcheck="false"
+      ></textarea>
+
+      <div class="toolbar">
+        <label class="language-control">
+          <span>翻译为</span>
+          <select id="target-language">
+            <option value="zh-CN">简体中文</option>
+            <option value="smart">智能中英互译</option>
+            <option value="zh-TW">繁体中文</option>
+            <option value="en">英语</option>
+            <option value="ja">日语</option>
+            <option value="ko">韩语</option>
+            <option value="fr">法语</option>
+            <option value="de">德语</option>
+            <option value="es">西班牙语</option>
+            <option value="ru">俄语</option>
+          </select>
+        </label>
+        <button id="translate-button" class="primary-button" type="button" title="手动重新翻译或重试">翻译</button>
+      </div>
+
+      <div class="provider-picker" role="group" aria-label="翻译来源，可多选">
+        <span class="provider-title">翻译来源（可多选）</span>
+        <div class="provider-options">
+          <label class="provider-option">
+            <input id="provider-google" type="checkbox" value="google" checked>
+            <span class="provider-check" aria-hidden="true"></span>
+            <span>谷歌翻译</span>
+          </label>
+          <label class="provider-option">
+            <input id="provider-deepseek" type="checkbox" value="deepseek">
+            <span class="provider-check" aria-hidden="true"></span>
+            <span>DeepSeek</span>
+          </label>
+          <label class="provider-option">
+            <input id="provider-deepl" type="checkbox" value="deepl">
+            <span class="provider-check" aria-hidden="true"></span>
+            <span>DeepL</span>
+          </label>
+        </div>
+      </div>
+
+      <details id="deepseek-settings" class="api-settings">
+        <summary>DeepSeek API 设置</summary>
+        <div class="api-key-row">
+          <input id="deepseek-api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="填写 DeepSeek API Key（仅显示黑点）">
+          <button id="save-api-key" class="compact-button primary-compact" type="button">保存</button>
+          <button id="clear-api-key" class="compact-button" type="button">清除 API</button>
+        </div>
+        <div id="api-key-status" class="api-key-status">API Key 仅保存在本机扩展存储中。</div>
+      </details>
+    </section>
+
+    <section class="result-panel" aria-live="polite">
+      <div class="result-header">
+        <span class="section-label">翻译结果</span>
+        <span id="status" class="status"></span>
+      </div>
+      <div id="results" class="results empty">翻译结果会按所选来源显示在这里</div>
+    </section>
+
+    <div id="error-box" class="error-box" role="alert" hidden></div>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>

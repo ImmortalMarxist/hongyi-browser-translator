@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "宏译",
+  "version": "1.4.0.34",
+  "description": "划词与剪贴板多来源翻译，支持 Google、DeepSeek 和免 API 的 DeepL 卡片结果，并提供可拖动、缩放、固定的翻译窗口。",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "contextMenus",
+    "clipboardRead",
+    "clipboardWrite",
+    "offscreen",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://translate.google.com/*",
+    "https://api.deepseek.com/*",
+    "https://oneshot-free.www.deepl.com/*",
+    "https://www.deepl.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "宏译",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "popup/popup.html",
+        "popup/popup.css",
+        "popup/popup.js",
+        "icons/*.png"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ]
+}
