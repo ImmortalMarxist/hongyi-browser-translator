@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "宏译",
-  "version": "1.4.0.34",
+  "version": "1.4.0.35",
   "description": "划词与剪贴板多来源翻译，支持 Google、DeepSeek 和免 API 的 DeepL 卡片结果，并提供可拖动、缩放、固定的翻译窗口。",
   "permissions": [
     "storage",

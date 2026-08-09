@@ -1,11 +1,11 @@
-﻿# 第一次使用：把扩展导入 Edge 或其他浏览器
+﻿# 第一次使用：把扩展导入 Edge 浏览器
 
 如果你第一次拿到“宏译”的 ZIP 压缩包，请按照下面的步骤安装。**ZIP 文件不能直接加载到 Edge，必须先解压。**
 
 1. 下载版本压缩包，例如：
 
    ```text
-   edge-google-selection-translator-v1.4.0.34.zip
+   edge-google-selection-translator-v1.4.0.35.zip
    ```
 
 2. 右键单击 ZIP 文件，选择“全部解压”，或使用其他解压软件将它解压到一个固定目录。
@@ -38,7 +38,7 @@
 
 # 宏译（Microsoft Edge 扩展）
 
-**当前版本：1.4.0.34**
+**当前版本：1.4.0.35**
 
 “宏译”可以翻译 Edge 网页中选中的文字，也可以翻译从其他软件复制到剪贴板的文字。翻译结果会直接显示在扩展弹窗中，支持 Google、DeepSeek 和 DeepL。
 
@@ -292,11 +292,12 @@ G:\chatGPT_codex\Codex\edge-google-selection-translator
 - **1.4.0.31**：改进打开工具栏窗口时的默认置顶和 Edge 焦点判断。
 - **1.4.0.32**：同一次选区和相同剪贴板文本只识别一次；手动编辑原文后不再被旧内容覆盖。
 - **1.4.0.33**：继续改进工具栏窗口首次打开时的自动置顶。
+- **1.4.0.35**：修复网页划词“译”小卡片中 DeepSeek 勾选后偶尔不创建结果卡片的异步状态竞争问题；勾选后立即显示 DeepSeek 检查/加载卡片，并支持取消后重新勾选。本版本未改动菜单栏窗口的置顶逻辑。
 - **1.4.0.34**：点击工具栏“宏”后可立即打开真正置顶窗口；取消置顶后保留当前内容并恢复普通独立窗口；进一步确保同时只保留一个翻译窗口。
 
 ## 六、说明
 
-- 当前主线版本为 **1.4.0.34**。
+- 当前主线版本为 **1.4.0.35**。
 - ZIP 压缩包需要先解压，再通过 Edge 的“加载解压缩的扩展”安装。
 - 本 README 以用户功能和使用方式为主；历史记录仅用于说明各版本解决过的问题。
 
@@ -309,14 +310,14 @@ G:\chatGPT_codex\Codex\edge-google-selection-translator
 
 <!-- ENGLISH TRANSLATION -->
 
-# First Use: Import the Extension into Microsoft Edge or another
+# First Use: Import the Extension into Microsoft Edge
 
 If this is your first time receiving the Hongyi ZIP archive, follow the steps below to install it. **A ZIP file cannot be loaded directly into Edge and must be extracted first.**
 
 1. Download the versioned archive, for example:
 
    ```text
-   edge-google-selection-translator-v1.4.0.34.zip
+   edge-google-selection-translator-v1.4.0.35.zip
    ```
 
 2. Right-click the ZIP file and select **Extract All**, or extract it to a permanent folder with another archive utility.
@@ -349,7 +350,7 @@ If Edge reports that the manifest is missing or the extension cannot be loaded, 
 
 # Hongyi (Microsoft Edge Extension)
 
-**Current version: 1.4.0.34**
+**Current version: 1.4.0.35**
 
 Hongyi can translate text selected on Edge webpages as well as text copied to the clipboard from other applications. Translation results are displayed directly in the extension window. Google, DeepSeek, and DeepL are supported.
 
@@ -602,11 +603,12 @@ First reload the extension on `edge://extensions`, and then refresh any webpages
 - **1.4.0.31**: Improved default always-on-top behavior and Edge focus detection when opening the toolbar window.
 - **1.4.0.32**: Recognized the same selection or clipboard content only once and prevented old content from overwriting manually edited source text.
 - **1.4.0.33**: Further improved automatic always-on-top behavior when the toolbar window first opens.
+- **1.4.0.35**: Fixed an asynchronous state race that could leave DeepSeek checked in the webpage selection card without creating its result card. The DeepSeek status/loading card now appears immediately, and unchecking then rechecking DeepSeek works reliably. This release does not change the toolbar window always-on-top behavior.
 - **1.4.0.34**: Made clicking the toolbar “宏” icon open a truly always-on-top window immediately; preserved the current content when always-on-top is disabled and the window returns to normal independent mode; further ensured that only one translation window remains open at a time.
 
 ## 6. Notes
 
-- The current mainline version is **1.4.0.34**.
+- The current mainline version is **1.4.0.35**.
 - A ZIP archive must be extracted before installation through Edge’s **Load unpacked** option.
 - This README focuses on user-visible features and instructions. The version history is included only to explain the issues addressed by each release.
 

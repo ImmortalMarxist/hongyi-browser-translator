@@ -635,14 +635,27 @@
     showPanel(anchorRect);
     showPanelNotice("\u6b63\u5728\u51c6\u5907\u7ffb\u8bd1\u2026");
 
+    // Closing another translator window is coordination work, not a prerequisite
+    // for producing translation cards. Start both operations together so an
+    // occasional stale/frozen tab cannot leave three checked providers with an
+    // empty result area and only an "extension response timed out" notice.
+    const activationPromise = sendMessage({ type: "ACTIVATE_PAGE_TRANSLATOR" })
+      .then((activation) => {
+        if (!activation?.ok) {
+          console.warn("Unable to finish translator-window coordination:", activation?.error || "Unknown error");
+        }
+      })
+      .catch((error) => {
+        console.warn("Translator-window coordination timed out; translation continued:", friendlyError(error));
+      });
+
+    clearPanelNotice();
     try {
-      const activation = await sendMessage({ type: "ACTIVATE_PAGE_TRANSLATOR" });
-      if (!activation?.ok) throw new Error(activation?.error || "\u65e0\u6cd5\u5173\u95ed\u5de5\u5177\u680f\u7ffb\u8bd1\u7a97\u53e3\u3002");
-      clearPanelNotice();
       await translateInPanel(text, anchorRect, true);
     } catch (error) {
       showPanelError(friendlyError(error));
     } finally {
+      void activationPromise;
       button.removeAttribute("aria-busy");
     }
   });

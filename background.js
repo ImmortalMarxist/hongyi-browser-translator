@@ -3,6 +3,8 @@ const MAX_TEXT_LENGTH = 50000;
 const TRANSLATION_CHUNK_LENGTH = 4500;
 const DEEPL_TRANSLATION_CHUNK_LENGTH = 1400;
 const DEEPL_TRANSLATION_TIMEOUT_MS = 30000;
+const GOOGLE_REQUEST_MIN_INTERVAL_MS = 180;
+const GOOGLE_BATCH_TRANSLATE_URL = "https://translate.google.com/_/TranslateWebserverUi/data/batchexecute";
 const DEEPL_ONESHOT_URL = "https://oneshot-free.www.deepl.com/v1/translate";
 const DEEPL_INSTANCE_STORAGE_KEY = "deepLInstanceId";
 const LEGACY_DEEPL_WORKER_STORAGE_KEY = "deepLWorkerTabState";
@@ -33,6 +35,9 @@ const DISABLED_ACTION_ICONS = {
   128: "icons/icon128-disabled.png"
 };
 const cache = new Map();
+const googleChunkRequests = new Map();
+let googleRequestQueue = Promise.resolve();
+let lastGoogleRequestStartedAt = 0;
 let creatingOffscreenDocument = null;
 let offscreenClipboardQueue = Promise.resolve();
 let toolbarPopupWindowId = null;
@@ -424,9 +429,16 @@ async function closeAllFloatingPanels(exceptTabId = null) {
   await Promise.allSettled(tabs.map(async (tab) => {
     if (!Number.isInteger(tab.id) || tab.id === exceptTabId) return;
     try {
-      await chrome.tabs.sendMessage(tab.id, { type: "CLOSE_FLOATING_PANEL" });
+      // Discarded, frozen, PDF, and extension-reloaded tabs can occasionally keep
+      // tabs.sendMessage pending. A stale tab must never block every later popup
+      // coordination request or prevent the active page from starting translation.
+      await withTimeout(
+        chrome.tabs.sendMessage(tab.id, { type: "CLOSE_FLOATING_PANEL" }),
+        TOOLBAR_MESSAGE_TIMEOUT_MS,
+        "Closing a stale floating translator panel timed out."
+      );
     } catch {
-      // Restricted Edge pages and tabs without the content script can be ignored.
+      // Restricted Edge pages and tabs without a responsive content script can be ignored.
     }
   }));
 }
@@ -1224,7 +1236,7 @@ async function translateMultiMessage(message) {
         if (!translatedText) {
           translatedText = await translateTextInChunks(
             text,
-            (chunk) => fetchGoogleMobileTranslation(chunk, sourceLanguage, targetLanguage)
+            (chunk) => fetchGoogleTranslation(chunk, sourceLanguage, targetLanguage)
           );
           rememberTranslation(key, translatedText);
         }
@@ -1444,7 +1456,7 @@ async function translateMessage(message) {
   if (!result) {
     result = await translateTextInChunks(
       text,
-      (chunk) => fetchGoogleMobileTranslation(chunk, sourceLanguage, targetLanguage)
+      (chunk) => fetchGoogleTranslation(chunk, sourceLanguage, targetLanguage)
     );
     cache.set(key, result);
     if (cache.size > 80) {
@@ -1465,6 +1477,131 @@ async function translateMessage(message) {
   return { ok: true, ...record };
 }
 
+async function fetchGoogleTranslation(text, sourceLanguage, targetLanguage) {
+  const requestKey = `${sourceLanguage}\n${targetLanguage}\n${text}`;
+  const pendingRequest = googleChunkRequests.get(requestKey);
+  if (pendingRequest) return pendingRequest;
+
+  const request = runGoogleRequest(async () => {
+    let batchError = null;
+    try {
+      // Prefer the channel used by the current Google Translate web page. It
+      // commonly remains available when the legacy mobile result page is 429.
+      return await fetchGoogleBatchTranslation(text, sourceLanguage, targetLanguage);
+    } catch (error) {
+      batchError = error;
+    }
+
+    try {
+      // Retain the previous mobile-page parser as a compatibility fallback.
+      return await fetchGoogleMobileTranslation(text, sourceLanguage, targetLanguage);
+    } catch (mobileError) {
+      if (batchError?.status === 429 || mobileError?.status === 429) {
+        throw new Error("Google \u7ffb\u8bd1\u6682\u65f6\u9650\u5236\u4e86\u5f53\u524d\u7f51\u7edc\u7684\u81ea\u52a8\u8bf7\u6c42\uff08HTTP 429\uff09\u3002\u8bf7\u7a0d\u540e\u70b9\u51fb\u5237\u65b0\uff1b\u6269\u5c55\u5df2\u81ea\u52a8\u5207\u6362\u5e76\u5c1d\u8bd5\u4e24\u6761\u514d API \u7ffb\u8bd1\u901a\u9053\u3002");
+      }
+      throw batchError || mobileError;
+    }
+  }).finally(() => {
+    if (googleChunkRequests.get(requestKey) === request) {
+      googleChunkRequests.delete(requestKey);
+    }
+  });
+
+  googleChunkRequests.set(requestKey, request);
+  return request;
+}
+
+function runGoogleRequest(task) {
+  const operation = googleRequestQueue
+    .catch(() => undefined)
+    .then(async () => {
+      const waitMs = Math.max(
+        0,
+        GOOGLE_REQUEST_MIN_INTERVAL_MS - (Date.now() - lastGoogleRequestStartedAt)
+      );
+      if (waitMs > 0) await wait(waitMs);
+      lastGoogleRequestStartedAt = Date.now();
+      return task();
+    });
+  googleRequestQueue = operation.catch(() => undefined);
+  return operation;
+}
+
+async function fetchGoogleBatchTranslation(text, sourceLanguage, targetLanguage) {
+  const url = new URL(GOOGLE_BATCH_TRANSLATE_URL);
+  url.searchParams.set("rpcids", "MkEWBc");
+  url.searchParams.set("source-path", "/");
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("soc-app", "1");
+  url.searchParams.set("soc-platform", "1");
+  url.searchParams.set("soc-device", "1");
+  url.searchParams.set("rt", "c");
+
+  const requestPayload = JSON.stringify([[
+    ["MkEWBc", JSON.stringify([[text, sourceLanguage, targetLanguage, true], [null]]), null, "generic"]
+  ]]);
+  const body = new URLSearchParams({ "f.req": requestPayload });
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    credentials: "omit",
+    cache: "no-store",
+    redirect: "follow",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      Accept: "application/json,text/plain,*/*"
+    },
+    body: body.toString()
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Google \u7f51\u9875\u7ffb\u8bd1\u8bf7\u6c42\u5931\u8d25\uff08HTTP ${response.status}\uff09\u3002`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return parseGoogleBatchTranslation(await response.text());
+}
+
+function parseGoogleBatchTranslation(responseText) {
+  for (const line of String(responseText || "").split(/\r?\n/)) {
+    const candidate = line.trim();
+    if (!candidate.startsWith("[[")) continue;
+
+    let responseRows;
+    try {
+      responseRows = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+
+    const translationRow = Array.isArray(responseRows)
+      ? responseRows.find((row) => Array.isArray(row) && row[0] === "wrb.fr" && row[1] === "MkEWBc")
+      : null;
+    if (!translationRow || typeof translationRow[2] !== "string") continue;
+
+    let payload;
+    try {
+      payload = JSON.parse(translationRow[2]);
+    } catch {
+      continue;
+    }
+
+    const blocks = Array.isArray(payload?.[1]?.[0]) ? payload[1][0] : [];
+    const translatedParts = [];
+    for (const block of blocks) {
+      const segments = Array.isArray(block?.[5]) ? block[5] : [];
+      for (const segment of segments) {
+        if (typeof segment?.[0] === "string") translatedParts.push(segment[0]);
+      }
+    }
+
+    const translatedText = translatedParts.join("").trim();
+    if (translatedText) return translatedText;
+  }
+
+  throw new Error("\u6ca1\u6709\u4ece Google \u4e3b\u7f51\u9875\u7ffb\u8bd1\u54cd\u5e94\u4e2d\u8bfb\u53d6\u5230\u7ed3\u679c\uff0c\u5df2\u51c6\u5907\u5c1d\u8bd5\u517c\u5bb9\u901a\u9053\u3002");
+}
+
 async function fetchGoogleMobileTranslation(text, sourceLanguage, targetLanguage) {
   const url = new URL("https://translate.google.com/m");
   url.searchParams.set("sl", sourceLanguage);
@@ -1479,7 +1616,9 @@ async function fetchGoogleMobileTranslation(text, sourceLanguage, targetLanguage
   });
 
   if (!response.ok) {
-    throw new Error(`谷歌翻译请求失败（HTTP ${response.status}）。`);
+    const error = new Error(`谷歌翻译请求失败（HTTP ${response.status}）。`);
+    error.status = response.status;
+    throw error;
   }
 
   const html = await response.text();
