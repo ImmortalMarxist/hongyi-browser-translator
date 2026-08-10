@@ -151,6 +151,10 @@
 5. 选择解压后的扩展根目录。该目录下应当直接包含 `manifest.json`。
 6. 在 Edge 扩展菜单中把“宏译”固定到工具栏。
 
+本机可以直接加载以下目录：
+
+```text
+G:\chatGPT_codex\Codex\edge-google-selection-translator
 ```
 
 更新扩展后：
